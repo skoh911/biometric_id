@@ -1,57 +1,59 @@
-# import required module
+import base64
+import os
 from cryptography.fernet import Fernet
-
-def key_gen():
-    # key generation
-    key = Fernet.generate_key()
-
-    # string the key in a file
-    with open('filekey.key', 'wb') as filekey:
-        filekey.write(key)
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.backends import default_backend
 
 
-def encrypt():
-    # opening the key
-    with open('filekey.key', 'rb') as filekey:
-        key = filekey.read()
-      
-    # using the generated key
-    fernet = Fernet(key)
-      
-    # opening the original file to encrypt
-    with open('pic.jpg', 'rb') as file:
-        original = file.read()
-          
-    # encrypting the file
-    encrypted = fernet.encrypt(original)
-  
-    # opening the file in write mode and 
-    # writing the encrypted data
-    with open('pic_encrypt.jpg', 'wb') as encrypted_file:
-        encrypted_file.write(encrypted)
+def make_fernet(pwd=b"password"):
+    salt = os.urandom(16)
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(),length=32,salt=salt,iterations=390000,backend=default_backend())
+    key = base64.urlsafe_b64encode(kdf.derive(pwd))
+    return Fernet(key)
 
 
-def decrypt():
-    # opening the key
-    with open('filekey.key', 'rb') as filekey:
-        key = filekey.read()
+def encrypt(filepath, pwd=b"password", f=None):
+    if f is None:
+        f = make_fernet(pwd)
 
-    # using the key
-    fernet = Fernet(key)
+    with open(filepath, "rb") as image:
+        b = image.read()
+     
+    data = f.encrypt(b)
 
-    # opening the encrypted file
-    with open('pic_encrypt.jpg', 'rb') as enc_file:
-        encrypted = enc_file.read()
+    dot_idx = filepath.index(".")
+    wo_type = filepath[:dot_idx]
+    write_file = wo_type + "_enc.txt"
 
-    # decrypting the file
-    decrypted = fernet.decrypt(encrypted)
+    with open(write_file, "wb") as eimage:
+        eimage.write(data)
 
-    # opening the file in write mode and
-    # writing the decrypted data
-    with open('pic_decrypt.jpg', 'wb') as dec_file:
-        dec_file.write(decrypted)
+    return f, write_file
 
 
-key_gen()
-encrypt()
-decrypt()
+def decrypt(filepath, pwd=b"password", f=None, image=True):
+    if f is None:
+        f = make_fernet(pwd)
+
+    with open(filepath, "rb") as image:
+        b = image.read()
+     
+    data = f.decrypt(b)
+
+    dot_idx = filepath.index(".")
+    wo_enc_and_type = filepath[:dot_idx -4]
+
+    write_file = wo_enc_and_type + ".jpg" if image else wo_enc_and_type + ".txt"
+
+    with open(write_file, "wb") as dimage:
+        dimage.write(data)
+
+    return f, write_file
+
+
+# test code
+path = "pic.jpg"
+pwd = b"stephen > krzysztof"
+(f, enc_path) = encrypt(path, pwd)
+decrypt(enc_path, pwd, f)
